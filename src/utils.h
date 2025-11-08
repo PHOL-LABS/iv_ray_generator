@@ -20,7 +20,7 @@ as the name is changed.
 int create_tmp_dir(void);
 int remove_tmp_dir(void);
 
-int transform_video(const char * input_path);
+int transform_video(const char * input_path, int frame_rate, int sample_rate);
 int get_frame_cnt(void);
 
 #endif

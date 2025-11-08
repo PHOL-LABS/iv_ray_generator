@@ -58,23 +58,27 @@ int remove_tmp_dir(void)
 	return 0;
 }
 
-int transform_video(const char * input_path)
+int transform_video(const char * input_path, int frame_rate, int sample_rate)
 {
-	char commands[255];
+        char commands[512];
 
-	fprintf(stderr, "Extracting Frames.\n");
+        fprintf(stderr, "Extracting Frames.\n");
 
-	sprintf(commands, "ffmpeg -loglevel 0 -stats -i %s -vf fps=24 ./tmp/frames/v-%%05d.bmp", input_path);
+        snprintf(commands, sizeof(commands),
+                 "ffmpeg -loglevel 0 -stats -i %s -vf fps=%d ./tmp/frames/v-%%05d.bmp",
+                 input_path, frame_rate);
 
-	system(commands);
+        system(commands);
 
-	fprintf(stderr, "Extracting Audio Track.\n");
+        fprintf(stderr, "Extracting Audio Track.\n");
 
-	sprintf(commands, "ffmpeg -loglevel 0 -stats -i %s -vn -ar 44100 -ac 2 -ab 192k -f adts ./tmp/Sample.aac", input_path);
+        snprintf(commands, sizeof(commands),
+                 "ffmpeg -loglevel 0 -stats -i %s -vn -ar %d -ac 2 -ab 192k -f adts ./tmp/Sample.aac",
+                 input_path, sample_rate);
 
-	system(commands);
+        system(commands);
 
-	return 0;
+        return 0;
 }
 
 int get_frame_cnt(void)
