@@ -14,6 +14,8 @@ as the name is changed.
  0. You just DO WHAT THE FUCK YOU WANT TO.
 ******************************************************************************/
 
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
