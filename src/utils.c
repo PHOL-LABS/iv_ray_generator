@@ -18,6 +18,8 @@ as the name is changed.
 #include <stdlib.h>
 
 #include <dirent.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #include <utils.h>
 
@@ -58,38 +60,65 @@ int remove_tmp_dir(void)
 	return 0;
 }
 
-int transform_video(const char * input_path)
+int transform_video(const char * input_path, int frame_rate, int sample_rate)
 {
-	char commands[255];
+        char commands[512];
 
-	fprintf(stderr, "Extracting Frames.\n");
+        fprintf(stderr, "Extracting Frames.\n");
 
-	sprintf(commands, "ffmpeg -loglevel 0 -stats -i %s -vf fps=24 ./tmp/frames/v-%%05d.bmp", input_path);
+        snprintf(commands, sizeof(commands),
+                 "ffmpeg -loglevel 0 -stats -i %s -vf fps=%d ./tmp/frames/v-%%05d.bmp",
+                 input_path, frame_rate);
 
-	system(commands);
+        system(commands);
 
-	fprintf(stderr, "Extracting Audio Track.\n");
+        fprintf(stderr, "Extracting Audio Track.\n");
 
-	sprintf(commands, "ffmpeg -loglevel 0 -stats -i %s -vn -ar 44100 -ac 2 -ab 192k -f adts ./tmp/Sample.aac", input_path);
+        snprintf(commands, sizeof(commands),
+                 "ffmpeg -loglevel 0 -stats -i %s -vn -ar %d -ac 2 -ab 192k -f adts ./tmp/Sample.aac",
+                 input_path, sample_rate);
 
-	system(commands);
+        system(commands);
 
-	return 0;
+        return 0;
 }
 
 int get_frame_cnt(void)
 {
-	int frame_count = 0;
-	DIR * dirp;
-	struct dirent * entry;
+        int frame_count = 0;
+        DIR * dirp;
+        struct dirent * entry;
 
-	dirp = opendir("./tmp/frames");
-	while ((entry = readdir(dirp)) != NULL) {
-	    if (entry->d_type == DT_REG) {
-	         frame_count++;
-	    }
-	}
-	closedir(dirp);
+        dirp = opendir("./tmp/frames");
+        if (dirp == NULL) {
+                return 0;
+        }
 
-	return frame_count;
+        while ((entry = readdir(dirp)) != NULL) {
+                struct stat file_stat;
+                char path_buffer[512];
+
+                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                        continue;
+                }
+
+#ifdef DT_REG
+                if (entry->d_type == DT_REG) {
+                        frame_count++;
+                        continue;
+                }
+                if (entry->d_type != DT_UNKNOWN) {
+                        continue;
+                }
+#endif
+
+                snprintf(path_buffer, sizeof(path_buffer), "./tmp/frames/%s", entry->d_name);
+                if (stat(path_buffer, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
+                        frame_count++;
+                }
+        }
+
+        closedir(dirp);
+
+        return frame_count;
 }

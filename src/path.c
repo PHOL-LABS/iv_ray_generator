@@ -22,6 +22,7 @@ as the name is changed.
 #include <bmp.h>
 
 extern inline float * image_pixel(image_t * img, int32_t x, int32_t y);
+extern int g_samples_per_frame;
 
 int gen_path(image_t * img, wave_t * wav, int frame_no)
 {
@@ -52,11 +53,9 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 	static int * sorted_y = NULL;
 	int sorted_length = 0;
 
-	static int * wave_x = NULL;
-	static int * wave_y = NULL;
-	int wav_length = (48000 / 24);
-	int wav_index;
-	int wav_bias;
+        int wav_length = g_samples_per_frame;
+        int wav_index;
+        int wav_bias;
 
 	float adjust_rate;
 	float zoom_rate;
@@ -88,9 +87,7 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 		sorted_x = malloc(graph_size * sizeof(int));
 		sorted_y = malloc(graph_size * sizeof(int));
 
-		wave_x = malloc(wav_length * sizeof(int));
-		wave_y = malloc(wav_length * sizeof(int));
-	}
+        }
 
 	/* reset avail points */
 	for (point_cnt = graph_size - 1; point_cnt >= 0; point_cnt --) {
@@ -167,7 +164,7 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 	adjust_rate = (float)sorted_length / (float)wav_length;
 	zoom_rate = 65535 / (float)(img->width);
 
-	wav_bias = frame_no * (48000 / 24);
+        wav_bias = frame_no * g_samples_per_frame;
 
 	for (wav_index = 0; wav_index < wav_length; wav_index++) {
 		point_index = wav_index * adjust_rate;
