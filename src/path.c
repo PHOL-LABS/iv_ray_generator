@@ -53,11 +53,9 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 	static int * sorted_y = NULL;
 	int sorted_length = 0;
 
-	static int * wave_x = NULL;
-	static int * wave_y = NULL;
         int wav_length = g_samples_per_frame;
-	int wav_index;
-	int wav_bias;
+        int wav_index;
+        int wav_bias;
 
 	float adjust_rate;
 	float zoom_rate;
@@ -89,9 +87,7 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 		sorted_x = malloc(graph_size * sizeof(int));
 		sorted_y = malloc(graph_size * sizeof(int));
 
-		wave_x = malloc(wav_length * sizeof(int));
-		wave_y = malloc(wav_length * sizeof(int));
-	}
+        }
 
 	/* reset avail points */
 	for (point_cnt = graph_size - 1; point_cnt >= 0; point_cnt --) {
