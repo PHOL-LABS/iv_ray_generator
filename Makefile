@@ -13,7 +13,7 @@ TARGET = v2w
 BIN_TARGET = ${DIR_BIN}/${TARGET}
 
 ${BIN_TARGET}:${OBJ} | ${DIR_BIN}
-	$(CC) $(CFLAGS) $(OBJ) -o $@ -lprofiler
+	$(CC) $(CFLAGS) $(OBJ) -o $@ -lprofiler -lm
 
 ${DIR_OBJ}/%.o:${DIR_SRC}/%.c ${DIR_OBJ}
 	$(CC) $(CFLAGS) -c $< -o $@
