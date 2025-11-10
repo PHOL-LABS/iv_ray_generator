@@ -19,7 +19,8 @@ as the name is changed.
 
 #include <image.h>
 #include <wave.h>
+#include <ivray.h>
 
-int gen_path(image_t * img, wave_t * wav, int frame_no);
+int gen_path(image_t * img, wave_t * wav, ivray_t * ivray, int frame_no);
 
 #endif

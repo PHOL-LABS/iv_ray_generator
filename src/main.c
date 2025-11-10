@@ -22,6 +22,7 @@ as the name is changed.
 #include <unistd.h>
 #include <getopt.h>
 #include <limits.h>
+#include <string.h>
 
 #include <image.h>
 #include <image_binary.h>
@@ -30,6 +31,7 @@ as the name is changed.
 #include <utils.h>
 #include <wave.h>
 #include <path.h>
+#include <ivray.h>
 
 int frame_cnt = 0;
 int frame_index = 0;
@@ -43,10 +45,20 @@ int g_samples_per_frame = 2000;
 const char * g_input_path = "./input.mp4";
 const char * g_output_path = "./out.wav";
 
+typedef enum {
+        OUTPUT_AUDIO,
+        OUTPUT_IVRAY
+} output_format_t;
+
+static output_format_t g_output_format = OUTPUT_AUDIO;
+static float g_ivray_brightness = 1.0f;
+static float g_ivray_speed = 1.0f;
+
 void show_proc(int signal);
 static void print_usage(const char *prog_name);
 static int parse_positive_int(const char *value, const char *option_name);
 static void update_samples_per_frame(void);
+static float parse_positive_float(const char *value, const char *option_name);
 
 int main(int argc, char *argv[])
 {
@@ -57,24 +69,43 @@ int main(int argc, char *argv[])
         extern int frame_s;
         char path[64];
         image_t * img;
-        wave_t * wav;
+        wave_t * wav = NULL;
+        ivray_t * ivray = NULL;
         struct sigaction sa;
         int opt;
+        int output_path_set = 0;
 
 
-        while ((opt = getopt(argc, argv, "hi:o:f:r:")) != -1) {
+        while ((opt = getopt(argc, argv, "hi:o:f:r:t:B:S:")) != -1) {
                 switch (opt) {
                 case 'i':
                         g_input_path = optarg;
                         break;
                 case 'o':
                         g_output_path = optarg;
+                        output_path_set = 1;
                         break;
                 case 'f':
                         g_frame_rate = parse_positive_int(optarg, "frame rate");
                         break;
                 case 'r':
                         g_sample_rate = parse_positive_int(optarg, "sample rate");
+                        break;
+                case 't':
+                        if (strcmp(optarg, "audio") == 0) {
+                                g_output_format = OUTPUT_AUDIO;
+                        } else if (strcmp(optarg, "ivray") == 0) {
+                                g_output_format = OUTPUT_IVRAY;
+                        } else {
+                                fprintf(stderr, "Unknown output format: %s\n", optarg);
+                                return 1;
+                        }
+                        break;
+                case 'B':
+                        g_ivray_brightness = parse_positive_float(optarg, "brightness");
+                        break;
+                case 'S':
+                        g_ivray_speed = parse_positive_float(optarg, "speed");
                         break;
                 case 'h':
                         print_usage(argv[0]);
@@ -89,22 +120,34 @@ int main(int argc, char *argv[])
                 g_input_path = argv[optind];
         }
 
+        if (!output_path_set) {
+                if (g_output_format == OUTPUT_IVRAY) {
+                        g_output_path = "./out.ivray";
+                } else {
+                        g_output_path = "./out.wav";
+                }
+        }
+
         if (g_frame_rate <= 0) {
                 fprintf(stderr, "Frame rate must be greater than zero.\n");
                 return 1;
         }
 
-        if (g_sample_rate <= 0) {
-                fprintf(stderr, "Sample rate must be greater than zero.\n");
-                return 1;
-        }
+        if (g_output_format == OUTPUT_AUDIO) {
+                if (g_sample_rate <= 0) {
+                        fprintf(stderr, "Sample rate must be greater than zero.\n");
+                        return 1;
+                }
 
-        if (g_sample_rate < g_frame_rate) {
-                fprintf(stderr, "Sample rate must be greater than or equal to frame rate.\n");
-                return 1;
-        }
+                if (g_sample_rate < g_frame_rate) {
+                        fprintf(stderr, "Sample rate must be greater than or equal to frame rate.\n");
+                        return 1;
+                }
 
-        update_samples_per_frame();
+                update_samples_per_frame();
+        } else {
+                g_samples_per_frame = 0;
+        }
 
         create_tmp_dir();
 
@@ -123,11 +166,27 @@ int main(int argc, char *argv[])
 	sigaction(SIGALRM, &sa, NULL);
 	alarm(3);
 
-        wav = wave_new(2, g_sample_rate, g_samples_per_frame * frame_cnt);
+        if (g_output_format == OUTPUT_AUDIO) {
+                wav = wave_new(2, g_sample_rate, g_samples_per_frame * frame_cnt);
+                if (wav == NULL) {
+                        fprintf(stderr, "Cannot allocate wave buffer.\n");
+                        return 1;
+                }
+        }
 
-	for (frame_index = 1; frame_index <= frame_cnt; frame_index++) {
-		
-		sprintf(path, "./tmp/frames/v-%05d.bmp", frame_index);
+        if (g_output_format == OUTPUT_IVRAY) {
+                ivray = ivray_new(frame_cnt);
+                if (ivray == NULL) {
+                        fprintf(stderr, "Cannot allocate ivray table.\n");
+                        return 1;
+                }
+                ivray->brightness = g_ivray_brightness;
+                ivray->speed = g_ivray_speed;
+        }
+
+        for (frame_index = 1; frame_index <= frame_cnt; frame_index++) {
+
+                sprintf(path, "./tmp/frames/v-%05d.bmp", frame_index);
 
 		img = bmp_read(path);
 
@@ -147,11 +206,11 @@ int main(int argc, char *argv[])
 
 		// bmp_save(img, path);
 
-                gen_path(img, wav, frame_index - 1);
+                gen_path(img, wav, ivray, frame_index - 1);
 
-		image_free(img);
-		
-	}
+                image_free(img);
+
+        }
 
 	raise(SIGALRM);
 
@@ -159,11 +218,23 @@ int main(int argc, char *argv[])
 
 	alarm(0);
 
-	fprintf(stderr, "\nSaving.\n");
+        fprintf(stderr, "\nSaving.\n");
 
-        wave_save(wav, g_output_path);
-
-	wave_free(wav);
+        if (g_output_format == OUTPUT_AUDIO) {
+                if (wave_save(wav, g_output_path) != 0) {
+                        fprintf(stderr, "Failed to save WAV output.\n");
+                        wave_free(wav);
+                        return 1;
+                }
+                wave_free(wav);
+        } else if (g_output_format == OUTPUT_IVRAY) {
+                if (ivray_save(ivray, g_output_path) != 0) {
+                        fprintf(stderr, "Failed to save IVRay output.\n");
+                        ivray_free(ivray);
+                        return 1;
+                }
+                ivray_free(ivray);
+        }
 
 	fprintf(stderr, "\nCleaning.\n");
 
@@ -213,13 +284,16 @@ void show_proc(int signal)
 static void print_usage(const char *prog_name)
 {
         fprintf(stderr,
-                "Usage: %s [-i input.mp4] [-o out.wav] [-f frame_rate] [-r sample_rate] [input.mp4]\n",
+                "Usage: %s [-i input.mp4] [-o out.wav] [-f frame_rate] [-r sample_rate] [-t format] [-B brightness] [-S speed] [input.mp4]\n",
                 prog_name);
         fprintf(stderr, "\nOptions:\n");
         fprintf(stderr, "  -i PATH        Path to the input video file (default: ./input.mp4).\n");
-        fprintf(stderr, "  -o PATH        Path to the output WAV file (default: ./out.wav).\n");
+        fprintf(stderr, "  -o PATH        Path to the output file (default: ./out.wav or ./out.ivray).\n");
         fprintf(stderr, "  -f NUMBER      Video frame rate to extract (default: 24).\n");
         fprintf(stderr, "  -r NUMBER      Audio sample rate for output (default: 48000).\n");
+        fprintf(stderr, "  -t FORMAT      Output format: 'audio' or 'ivray' (default: audio).\n");
+        fprintf(stderr, "  -B NUMBER      Brightness value for ivray header (default: 1.0).\n");
+        fprintf(stderr, "  -S NUMBER      Speed value for ivray header (default: 1.0).\n");
         fprintf(stderr, "  -h             Show this help message.\n");
 }
 
@@ -251,4 +325,23 @@ static void update_samples_per_frame(void)
         if (g_samples_per_frame <= 0) {
                 g_samples_per_frame = 1;
         }
+}
+
+static float parse_positive_float(const char *value, const char *option_name)
+{
+        char *endptr;
+        float parsed;
+
+        parsed = strtof(value, &endptr);
+        if (*value == '\0' || *endptr != '\0') {
+                fprintf(stderr, "Invalid %s: %s\n", option_name, value);
+                exit(EXIT_FAILURE);
+        }
+
+        if (parsed <= 0.0f) {
+                fprintf(stderr, "%s must be greater than 0.\n", option_name);
+                exit(EXIT_FAILURE);
+        }
+
+        return parsed;
 }

@@ -21,12 +21,14 @@ as the name is changed.
 #include <image.h>
 #include <bmp.h>
 
+#include <ivray.h>
+
 extern inline float * image_pixel(image_t * img, int32_t x, int32_t y);
 extern int g_samples_per_frame;
 
-int gen_path(image_t * img, wave_t * wav, int frame_no)
+int gen_path(image_t * img, wave_t * wav, ivray_t * ivray, int frame_no)
 {
-	float * point;
+        float * point;
 
 	static int graph_size = 0;
 
@@ -49,8 +51,10 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 	float point_distant;
 	
 	/* store sorted path */
-	static int * sorted_x = NULL;
-	static int * sorted_y = NULL;
+        static int * sorted_x = NULL;
+        static int * sorted_y = NULL;
+        static int * delta_x = NULL;
+        static int * delta_y = NULL;
 	int sorted_length = 0;
 
         int wav_length = g_samples_per_frame;
@@ -84,8 +88,10 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 		origin_dist  = malloc(graph_size * sizeof(int));
 		origin_avail = malloc(graph_size * sizeof(int));
 		
-		sorted_x = malloc(graph_size * sizeof(int));
-		sorted_y = malloc(graph_size * sizeof(int));
+                sorted_x = malloc(graph_size * sizeof(int));
+                sorted_y = malloc(graph_size * sizeof(int));
+                delta_x = malloc(graph_size * sizeof(int));
+                delta_y = malloc(graph_size * sizeof(int));
 
         }
 
@@ -148,33 +154,49 @@ int gen_path(image_t * img, wave_t * wav, int frame_no)
 		}
 
 		/* add to sorted array and remove from available */
-		sorted_x[sorted_length] = origin_x_pos[dist_min_index];
-		sorted_y[sorted_length] = origin_y_pos[dist_min_index];
+                {
+                        int prev_x = last_x;
+                        int prev_y = last_y;
+                        int current_x = origin_x_pos[dist_min_index];
+                        int current_y = origin_y_pos[dist_min_index];
 
-		origin_avail[dist_min_index] = 0;
+                        sorted_x[sorted_length] = current_x;
+                        sorted_y[sorted_length] = current_y;
+                        delta_x[sorted_length] = current_x - prev_x;
+                        delta_y[sorted_length] = current_y - prev_y;
 
-		last_x = origin_x_pos[dist_min_index];
-		last_y = origin_y_pos[dist_min_index];
+                        last_x = current_x;
+                        last_y = current_y;
+                }
 
-		sorted_length ++;
+                origin_avail[dist_min_index] = 0;
 
-	}
+                sorted_length ++;
+
+        }
 
 
-	adjust_rate = (float)sorted_length / (float)wav_length;
-	zoom_rate = 65535 / (float)(img->width);
+        if (wav != NULL) {
+                wav_length = g_samples_per_frame;
+                adjust_rate = (float)sorted_length / (float)wav_length;
+                zoom_rate = 65535 / (float)(img->width);
 
-        wav_bias = frame_no * g_samples_per_frame;
+                wav_bias = frame_no * g_samples_per_frame;
 
-	for (wav_index = 0; wav_index < wav_length; wav_index++) {
-		point_index = wav_index * adjust_rate;
-		wav->data[0][wav_bias] = zoom_rate * (sorted_x[point_index] - (img->width)/2);
-		wav->data[1][wav_bias] = zoom_rate * (sorted_y[point_index] - (img->height)/2);
+                for (wav_index = 0; wav_index < wav_length; wav_index++) {
+                        point_index = wav_index * adjust_rate;
+                        wav->data[0][wav_bias] = zoom_rate * (sorted_x[point_index] - (img->width)/2);
+                        wav->data[1][wav_bias] = zoom_rate * (sorted_y[point_index] - (img->height)/2);
 
-		wav_bias ++;
-	}
+                        wav_bias ++;
+                }
+        }
 
-	return 0;
+        if (ivray != NULL) {
+                ivray_record_frame(ivray, frame_no, delta_x, delta_y, sorted_length);
+        }
+
+        return 0;
 }
 
 int __attribute__((weak)) main(void)
@@ -187,10 +209,10 @@ int __attribute__((weak)) main(void)
 
 	wav = wave_new(2, 48000, (48000 / 24) * 20);
 
-	for (frame = 0; frame < 20; frame++) {
-		printf("Frame_no: %d\n",frame);
-		gen_path(img, wav, frame);
-	}
+        for (frame = 0; frame < 20; frame++) {
+                printf("Frame_no: %d\n",frame);
+                gen_path(img, wav, NULL, frame);
+        }
 
 	wave_save(wav, "./out.wav");
 
