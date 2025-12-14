@@ -3,6 +3,6 @@ set -euo pipefail
 
 SERIAL=${SERIAL:/dev/ttyUSB1}
 
-BAUD=${BAUD:-115200}
+BAUD=${BAUD:-921600}
 
-python stream_client.py --serial "$SERIAL" --serial-baud "$BAUD" "$@"
+python3 stream_client.py --serial "$SERIAL" --serial-baud "$BAUD" "$@"
