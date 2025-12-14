@@ -1,0 +1,28 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang make libgoogle-perftools-dev
+
+      - name: Build project
+        run: make -C ivray_v_generator
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2w-binary
+          path: ivray_v_generator/bin/v2w
+          if-no-files-found: error
