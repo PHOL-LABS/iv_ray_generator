@@ -14,13 +14,13 @@ class ScoreScreen:
         self.start_x, self.start_y = place_elements_offset(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
-            200, 
-            200,
+            SCREEN_WIDTH, 
+            SCREEN_HEIGHT,
             0.25,
             0.05
         )
         font.init()
-        self.font = font.Font(None, 36)
+        self.font = font.Font(None, 16)
 
     def draw_scores(self):
         score_text = "SCORE: " + str(self._game_state.points)

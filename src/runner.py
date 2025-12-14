@@ -8,11 +8,12 @@ from src.game.event_management import EventHandler
 from src.game.state_management import GameState
 from src.gui.screen_management import ScreenManager
 from src.sounds import SoundManager
+from src.utils.screen_streamer import ScreenStreamer
 from src.log_handle import get_logger
 logger = get_logger(__name__)
 
 class GameRun:
-    def __init__(self):
+    def __init__(self, enable_stream: bool = False, stream_port=None, stream_serial=None):
         logger.info("About to initialize pygame")
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -25,6 +26,13 @@ class GameRun:
         self.all_sprites = pygame.sprite.Group()
         self.gui = ScreenManager(self.screen, self.game_state, self.all_sprites)
         logger.info("screen manager object created")
+        self.streamer = None
+        if enable_stream and (stream_port or stream_serial):
+            self.streamer = ScreenStreamer(
+                SCREEN_WIDTH, SCREEN_HEIGHT, tcp_port=stream_port, serial_path=stream_serial
+            )
+            self.streamer.start()
+            logger.info("Screen streamer started")
 
     def initialize_highscore(self):
         with open("levels/stats.json") as fp:
@@ -71,8 +79,12 @@ class GameRun:
             self.all_sprites.update(dt)
             self.check_highscores()
             pygame.display.flip()
+            if self.streamer:
+                self.streamer.send_surface(self.screen)
             dt = clock.tick(self.game_state.fps)
             dt /= 100
         self.update_highscore()
+        if self.streamer:
+            self.streamer.stop()
         pygame.quit()
         sys.exit()
