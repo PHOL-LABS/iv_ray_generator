@@ -1,4 +1,14 @@
-# badapple_oscilloscope
+# IV-Ray repo
+
+Includes:
+
+- IV-Ray video-to-vector converter
+- IV-Ray streamer of pacman game via serial port
+
+Video-To-Vector converter (ivray_v_generator) is based on the version from Yeonji 
+
+
+# IV-Ray video-to-vector converter (badapple_oscilloscope)
 
 _Playing "Bad Apple!!" On Oscilloscope_
 
@@ -19,14 +29,6 @@ Oscilloscope can display graphs using XY mode. This project generates a waveform
 (gif was from wikipedia)
 
 If You want to do this, just download wave file from [release](https://github.com/yeonzi/badappe_oscilloscope/releases) page, playing this audio file by any player, the left and right channels are connected to the X and Y channels of the oscilloscope, and you will see the video.
-IV-Ray repo
-
-Includes:
-
-- IV-Ray video-to-vector converter
-- IV-Ray streamer of pacman game via serial port
-
-Video-To-Vector converter (ivray_v_generator) is based on the version from Yeonji 
 
 ## TODO
 
