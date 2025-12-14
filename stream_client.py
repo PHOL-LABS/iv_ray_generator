@@ -11,9 +11,20 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Server host")
     parser.add_argument("--port", type=int, help="Server port")
     parser.add_argument("--serial", help="Serial port path (e.g., COM3 or /dev/ttyUSB0)")
+    parser.add_argument(
+        "--serial-baud",
+        type=int,
+        default=115200,
+        help="Baudrate for serial reception (default: 115200).",
+    )
     args = parser.parse_args()
 
-    client = StreamClient(host=args.host, port=args.port, serial_path=args.serial)
+    client = StreamClient(
+        host=args.host,
+        port=args.port,
+        serial_path=args.serial,
+        serial_baud=args.serial_baud,
+    )
     client.start()
 
     pygame.init()

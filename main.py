@@ -22,6 +22,12 @@ def parse_args():
         default=None,
         help="Serial port path to write grayscale stream (e.g., COM3, /dev/ttyUSB0).",
     )
+    parser.add_argument(
+        "--stream-serial-baud",
+        type=int,
+        default=115200,
+        help="Baudrate for serial grayscale stream (default: 115200).",
+    )
     return parser.parse_args()
 
 
@@ -31,5 +37,6 @@ if __name__ == "__main__":
         enable_stream=args.stream,
         stream_port=args.stream_port,
         stream_serial=args.stream_serial,
+        stream_serial_baud=args.stream_serial_baud,
     )
     gr.main()

@@ -8,6 +8,11 @@ from typing import List, Tuple, Optional
 
 import pygame
 
+try:
+    import serial  # type: ignore
+except ImportError:  # pragma: no cover - handled at runtime
+    serial = None
+
 
 class ScreenStreamer:
     """
@@ -31,18 +36,20 @@ class ScreenStreamer:
         height: int,
         tcp_port: Optional[int] = None,
         serial_path: Optional[str] = None,
+        serial_baud: int = 115200,
     ):
         self.width = width
         self.height = height
         self.tcp_port = tcp_port
         self.serial_path = serial_path
+        self.serial_baud = serial_baud
         self.frame_id = 0
         self._stop_event = threading.Event()
         self._accept_thread = None
         self._listener = None
         self._clients: List[socket.socket] = []
         self._clients_lock = threading.Lock()
-        self._serial_fp = None
+        self._serial = None
 
     def start(self):
         if self.tcp_port:
@@ -55,9 +62,12 @@ class ScreenStreamer:
             )
             self._accept_thread.start()
         if self.serial_path:
-            # Open serial port as a binary file. Configuration (baud, etc.)
-            # is expected to be handled externally.
-            self._serial_fp = open(self.serial_path, "wb", buffering=0)
+            if serial is None:
+                raise RuntimeError("pyserial is required for serial streaming")
+            # Non-blocking serial writer.
+            self._serial = serial.Serial(
+                self.serial_path, baudrate=self.serial_baud, timeout=0
+            )
 
     def stop(self):
         self._stop_event.set()
@@ -75,9 +85,9 @@ class ScreenStreamer:
                 except OSError:
                     pass
             self._clients.clear()
-        if self._serial_fp:
+        if self._serial:
             try:
-                self._serial_fp.close()
+                self._serial.close()
             except OSError:
                 pass
 
@@ -109,9 +119,9 @@ class ScreenStreamer:
                     pass
                 if dead in self._clients:
                     self._clients.remove(dead)
-        if self._serial_fp:
+        if self._serial:
             try:
-                self._serial_fp.write(data)
+                self._serial.write(data)
             except OSError:
                 pass
 
@@ -231,12 +241,19 @@ class StreamClient:
     decoded surfaces.
     """
 
-    def __init__(self, host: Optional[str] = None, port: Optional[int] = None, serial_path: Optional[str] = None):
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        serial_path: Optional[str] = None,
+        serial_baud: int = 115200,
+    ):
         if not port and not serial_path:
             raise ValueError("Either port or serial_path is required")
         self.host = host or "127.0.0.1"
         self.port = port
         self.serial_path = serial_path
+        self.serial_baud = serial_baud
         self._conn = None
         self._buffer = b""
         self._queue: "queue.Queue[bytes]" = queue.Queue()
@@ -250,7 +267,11 @@ class StreamClient:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self._conn = sock
         else:
-            self._conn = open(self.serial_path, "rb", buffering=0)
+            if serial is None:
+                raise RuntimeError("pyserial is required for serial streaming")
+            self._conn = serial.Serial(
+                self.serial_path, baudrate=self.serial_baud, timeout=0
+            )
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
 

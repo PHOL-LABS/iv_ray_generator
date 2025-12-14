@@ -13,7 +13,13 @@ from src.log_handle import get_logger
 logger = get_logger(__name__)
 
 class GameRun:
-    def __init__(self, enable_stream: bool = False, stream_port=None, stream_serial=None):
+    def __init__(
+        self,
+        enable_stream: bool = False,
+        stream_port=None,
+        stream_serial=None,
+        stream_serial_baud: int = 115200,
+    ):
         logger.info("About to initialize pygame")
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -29,7 +35,11 @@ class GameRun:
         self.streamer = None
         if enable_stream and (stream_port or stream_serial):
             self.streamer = ScreenStreamer(
-                SCREEN_WIDTH, SCREEN_HEIGHT, tcp_port=stream_port, serial_path=stream_serial
+                SCREEN_WIDTH,
+                SCREEN_HEIGHT,
+                tcp_port=stream_port,
+                serial_path=stream_serial,
+                serial_baud=stream_serial_baud,
             )
             self.streamer.start()
             logger.info("Screen streamer started")
