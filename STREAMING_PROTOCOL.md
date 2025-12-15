@@ -1,29 +1,39 @@
-# Grayscale Screen Streaming Protocol / Протокол потоковой передачи в оттенках серого
+# Screen Streaming Protocol (Grayscale & B/W) / Протокол потоковой передачи (оттенки серого и Ч/Б)
 
 ## English
-- Purpose: stream pygame screen contents as grayscale with a compact, restart-friendly framing.
-- Start-of-frame command: single byte `0xA5`, immediately followed by ASCII magic `IVG`.
-- Header (little-endian, total 17 bytes):  
-  `start (0xA5) | magic (3s) | version (u8) | frame_id (u32) | width (u16) | height (u16) | payload_len (u32)`.  
-  `version` starts at `1`. `payload_len` is the number of bytes that follow in the payload.
-- Payload: sequence of run records, each 7 bytes, little-endian:  
+- Purpose: stream pygame screen contents in grayscale or black/white with compact, restart-friendly framing.
+- Start-of-frame marker: byte `0xA5` followed by ASCII magic `IVG`.
+- Header (little-endian, 18 bytes):  
+  `start (0xA5) | magic (3s) | version (u8) | flags (u8) | frame_id (u32) | width (u16) | height (u16) | payload_len (u32)`.  
+  - `version`: starts at `1`.  
+  - `flags`: bit0 = `1` means black/white mode; `0` means grayscale mode.  
+  - `payload_len`: number of bytes that follow.
+- Grayscale payload (flags bit0 = 0): sequence of run records, each 7 bytes, little-endian:  
   `offset (u32) | gray (u8) | run_len (u16)`.  
-  `offset` is the absolute pixel index starting at 0, scanning left-to-right, top-to-bottom. `run_len` counts how many consecutive pixels carry `gray`, capped at `65535`.
-- Grayscale: derived per pixel as `gray = int(0.299 * r + 0.587 * g + 0.114 * b)` using the RGB values read from the source surface.
-- End-of-frame: reached after exactly `payload_len` bytes are read; expected pixels = `width * height`. Receivers should validate that the final filled pixel count matches.
-- Resync strategy: on corruption, scan for `0xA5 49 56 47` (start byte + `IVG`), read the next 13 header bytes, then consume `payload_len`. Because every run ships its absolute `offset`, receivers can drop or skip corrupted runs and still place later runs correctly.
-- Transport: designed for both TCP sockets and raw serial streams. TCP is recommended for reliability; serial links should run with a binary-safe mode and sufficient baud rate (e.g., `115200`).
+  `offset` is absolute pixel index (row-major). `run_len` is capped at `65535`.
+- Black/white payload (flags bit0 = 1): runs of only “set” (white) pixels, each 6 bytes:  
+  `offset (u32) | run_len (u16)`.  
+  Background is implicit black; any pixels not covered by a run stay black. Threshold on sender: gray >= 128 → white, otherwise black.
+- Grayscale conversion: `gray = int(0.299 * r + 0.587 * g + 0.114 * b)` from the source surface.
+- End-of-frame: reached after reading `payload_len` bytes; expected pixels = `width * height`. Receivers should validate coverage.
+- Resync: on corruption, scan for `0xA5 49 56 47` (start byte + `IVG`), read the next 14 header bytes, then consume `payload_len`. Because each run has an absolute `offset`, receivers can skip bad runs and still place later runs correctly.
+- Transport: works over TCP or serial (pyserial). Prefer TCP for reliability; for serial use a binary-safe link and matching baud (e.g., `115200`, `921600`).
 
 ## Русский
-- Назначение: компактно передавать содержимое окна pygame в оттенках серого с возможностью восстановления при потере пакетов.
-- Команда начала кадра: байт `0xA5`, за которым сразу идут ASCII-символы `IVG`.
-- Заголовок (little-endian, 17 байт):  
-  `start (0xA5) | magic (3s) | version (u8) | frame_id (u32) | width (u16) | height (u16) | payload_len (u32)`.  
-  `version` начинается с `1`. `payload_len` — количество байт в полезной нагрузке.
-- Полезная нагрузка: последовательность записей по 7 байт в формате little-endian:  
+- Назначение: передавать содержимое окна pygame в оттенках серого или в чёрно-белом виде с компактным кадрированием и возможностью восстановления.
+- Маркер начала кадра: байт `0xA5`, затем ASCII-магия `IVG`.
+- Заголовок (little-endian, 18 байт):  
+  `start (0xA5) | magic (3s) | version (u8) | flags (u8) | frame_id (u32) | width (u16) | height (u16) | payload_len (u32)`.  
+  - `version`: начинается с `1`.  
+  - `flags`: бит0 = `1` — чёрно-белый режим; `0` — градации серого.  
+  - `payload_len`: количество последующих байт.
+- Полезная нагрузка в градациях серого (бит0 = 0): записи по 7 байт:  
   `offset (u32) | gray (u8) | run_len (u16)`.  
-  `offset` — абсолютный индекс пикселя, считая слева направо и сверху вниз. `run_len` — количество одинаковых пикселей (`gray`), максимум `65535`.
-- Оттенок серого: `gray = int(0.299 * r + 0.587 * g + 0.114 * b)` для RGB-пикселей исходной поверхности.
-- Конец кадра: наступает после чтения ровно `payload_len` байт; ожидаемое число пикселей — `width * height`. Приёмник должен сверить итоговый размер.
-- Восстановление: при порче данных ищите последовательность `0xA5 49 56 47` (стартовый байт + `IVG`), считайте следующие 13 байт заголовка и затем `payload_len` байт. Так как каждая запись содержит абсолютный `offset`, приёмник может пропускать повреждённые участки и всё равно правильно разместить более поздние участки кадра.
-- Транспорт: подходит для TCP-сокетов и «сырого» сериала. Рекомендуется TCP для надёжности; для последовательного порта используйте двоичный режим и подходящую скорость (например, `115200` бод).
+  `offset` — абсолютный индекс пикселя (построчно). `run_len` — длина последовательности, максимум `65535`.
+- Полезная нагрузка Ч/Б (бит0 = 1): только участки “включённых” (белых) пикселей по 6 байт:  
+  `offset (u32) | run_len (u16)`.  
+  Фон подразумевается чёрным; всё не покрытое участками остаётся чёрным. Порог на отправителе: gray >= 128 → белый, иначе чёрный.
+- Перевод в серый: `gray = int(0.299 * r + 0.587 * g + 0.114 * b)` из исходной поверхности.
+- Конец кадра: после чтения `payload_len` байт; ожидаемое число пикселей = `width * height`. Приёмник должен сверять покрытие.
+- Восстановление: при повреждении ищите `0xA5 49 56 47` (стартовый байт + `IVG`), читайте следующие 14 байт заголовка и затем `payload_len`. Так как каждое звено содержит абсолютный `offset`, приёмник может пропускать плохие записи и всё равно верно размещать последующие.
+- Транспорт: TCP или serial (pyserial). TCP предпочтителен; для последовательного порта используйте двоичный режим и согласованный baud (например, `115200`, `921600`).

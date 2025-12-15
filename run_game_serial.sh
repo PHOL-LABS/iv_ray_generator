@@ -1,2 +1,14 @@
 #!/usr/bin/env bash
-python3 main.py --stream --stream-serial "/dev/ttyUSB0" --stream-serial-baud 921600
+set -euo pipefail
+
+# SERIAL should be provided via env var or CLI override.
+SERIAL=${SERIAL:-/dev/ttyUSB0}
+BAUD=${BAUD:-921600}
+BW=${BW:-0}
+
+EXTRA=()
+if [ "$BW" != "0" ]; then
+  EXTRA+=(--bw-stream)
+fi
+
+python3 main.py --stream --stream-serial "$SERIAL" --stream-serial-baud "$BAUD" "${EXTRA[@]}" "$@"

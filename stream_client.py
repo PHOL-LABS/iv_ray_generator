@@ -17,6 +17,11 @@ def main():
         default=115200,
         help="Baudrate for serial reception (default: 115200).",
     )
+    parser.add_argument(
+        "--bw",
+        action="store_true",
+        help="Expect black/white stream (threshold grayscale if needed).",
+    )
     args = parser.parse_args()
 
     client = StreamClient(
@@ -24,6 +29,7 @@ def main():
         port=args.port,
         serial_path=args.serial,
         serial_baud=args.serial_baud,
+        expect_bw=args.bw,
     )
     client.start()
 

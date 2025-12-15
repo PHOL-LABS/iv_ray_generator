@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python main.py --stream --stream-port 5001
+PORT=${PORT:-5001}
+BW=${BW:-0}
+
+EXTRA=()
+if [ "$BW" != "0" ]; then
+  EXTRA+=(--bw-stream)
+fi
+
+python main.py --stream --stream-port "$PORT" "${EXTRA[@]}" "$@"

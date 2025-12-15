@@ -16,18 +16,21 @@ except ImportError:  # pragma: no cover - handled at runtime
 
 class ScreenStreamer:
     """
-    Encode pygame surfaces to grayscale and stream them over TCP and/or a raw
-    serial file, plus decode incoming frames back into pygame surfaces.
+    Encode pygame surfaces to grayscale or black/white and stream them over TCP
+    and/or a serial port, plus decode incoming frames back into pygame surfaces.
     The protocol is documented in STREAMING_PROTOCOL.md.
     """
 
     START_BYTE = 0xA5
     MAGIC = b"IVG"
     VERSION = 1
-    HEADER_STRUCT = struct.Struct("<B3sB I H H I")
-    RUN_STRUCT = struct.Struct("<I B H")
+    FLAG_BW = 0x01
+    HEADER_STRUCT = struct.Struct("<B3sB B I H H I")  # start, magic, version, flags, frame_id, w, h, payload_len
+    RUN_STRUCT = struct.Struct("<I B H")  # grayscale runs
+    BW_RUN_STRUCT = struct.Struct("<I H")  # BW runs (only "set" pixels)
     HEADER_SIZE = HEADER_STRUCT.size
     RUN_SIZE = RUN_STRUCT.size
+    BW_RUN_SIZE = BW_RUN_STRUCT.size
     START_SEQ = bytes([START_BYTE]) + MAGIC
 
     def __init__(
@@ -37,12 +40,14 @@ class ScreenStreamer:
         tcp_port: Optional[int] = None,
         serial_path: Optional[str] = None,
         serial_baud: int = 115200,
+        bw_mode: bool = False,
     ):
         self.width = width
         self.height = height
         self.tcp_port = tcp_port
         self.serial_path = serial_path
         self.serial_baud = serial_baud
+        self.bw_mode = bw_mode
         self.frame_id = 0
         self._stop_event = threading.Event()
         self._accept_thread = None
@@ -132,11 +137,17 @@ class ScreenStreamer:
     def encode_surface(self, surface: pygame.Surface) -> bytes:
         rgb_bytes = pygame.image.tostring(surface, "RGB")
         gray_values = self._rgb_to_gray(rgb_bytes)
-        payload = self._encode_runs(gray_values)
+        flags = 0
+        if self.bw_mode:
+            payload = self._encode_bw_runs(gray_values)
+            flags |= self.FLAG_BW
+        else:
+            payload = self._encode_runs(gray_values)
         header = self.HEADER_STRUCT.pack(
             self.START_BYTE,
             self.MAGIC,
             self.VERSION,
+            flags,
             self.frame_id,
             self.width,
             self.height,
@@ -159,6 +170,25 @@ class ScreenStreamer:
             idx += run_len
         return bytes(payload)
 
+    def _encode_bw_runs(self, gray_values: bytes) -> bytes:
+        payload = bytearray()
+        total = len(gray_values)
+        idx = 0
+        while idx < total:
+            # Skip zeros (black pixels)
+            while idx < total and gray_values[idx] < 10:
+                idx += 1
+            if idx >= total:
+                break
+            run_len = 0
+            start = idx
+            limit = min(total - idx, 65535)
+            while run_len < limit and gray_values[idx] >= 10:
+                run_len += 1
+                idx += 1
+            payload += self.BW_RUN_STRUCT.pack(start, run_len)
+        return bytes(payload)
+
     @staticmethod
     def _rgb_to_gray(rgb_bytes: bytes) -> bytes:
         gray = bytearray(len(rgb_bytes) // 3)
@@ -172,12 +202,12 @@ class ScreenStreamer:
         return bytes(gray)
 
     @classmethod
-    def extract_frames(cls, buffer: bytes) -> Tuple[List[Tuple[int, int, int, bytes]], bytes]:
+    def extract_frames(cls, buffer: bytes) -> Tuple[List[Tuple[int, int, int, bytes, bool]], bytes]:
         """
         Extract complete frames from a byte buffer. Returns (frames, remainder).
-        Each frame tuple: (frame_id, width, height, grayscale_bytes).
+        Each frame tuple: (frame_id, width, height, grayscale_bytes, is_bw).
         """
-        frames: List[Tuple[int, int, int, bytes]] = []
+        frames: List[Tuple[int, int, int, bytes, bool]] = []
         search_from = 0
         while True:
             start_idx = buffer.find(cls.START_SEQ, search_from)
@@ -193,6 +223,7 @@ class ScreenStreamer:
                     start_byte,
                     magic,
                     version,
+                    flags,
                     frame_id,
                     width,
                     height,
@@ -208,8 +239,13 @@ class ScreenStreamer:
             if len(buffer) < start_idx + total_len:
                 return frames, buffer[start_idx:]
             payload = buffer[start_idx + cls.HEADER_SIZE:start_idx + total_len]
-            gray = cls._decode_payload(payload, width * height)
-            frames.append((frame_id, width, height, gray))
+            if flags & cls.FLAG_BW:
+                gray = cls._decode_bw_payload(payload, width * height)
+                is_bw = True
+            else:
+                gray = cls._decode_payload(payload, width * height)
+                is_bw = False
+            frames.append((frame_id, width, height, gray, is_bw))
             buffer = buffer[start_idx + total_len :]
             search_from = 0
 
@@ -225,6 +261,20 @@ class ScreenStreamer:
             if offset >= pixel_count or offset >= end:
                 continue
             gray[offset:end] = bytes([gval]) * (end - offset)
+        return bytes(gray)
+
+    @classmethod
+    def _decode_bw_payload(cls, payload: bytes, pixel_count: int) -> bytes:
+        gray = bytearray(pixel_count)  # defaults to black
+        for i in range(0, len(payload), cls.BW_RUN_SIZE):
+            chunk = payload[i : i + cls.BW_RUN_SIZE]
+            if len(chunk) < cls.BW_RUN_SIZE:
+                break
+            offset, run_len = cls.BW_RUN_STRUCT.unpack(chunk)
+            end = min(offset + run_len, pixel_count)
+            if offset >= pixel_count or offset >= end:
+                continue
+            gray[offset:end] = b"\xFF" * (end - offset)
         return bytes(gray)
 
     @staticmethod
@@ -247,6 +297,7 @@ class StreamClient:
         port: Optional[int] = None,
         serial_path: Optional[str] = None,
         serial_baud: int = 115200,
+        expect_bw: bool = False,
     ):
         if not port and not serial_path:
             raise ValueError("Either port or serial_path is required")
@@ -254,6 +305,7 @@ class StreamClient:
         self.port = port
         self.serial_path = serial_path
         self.serial_baud = serial_baud
+        self.expect_bw = expect_bw
         self._conn = None
         self._buffer = b""
         self._queue: "queue.Queue[bytes]" = queue.Queue()
@@ -309,7 +361,16 @@ class StreamClient:
         if not self._buffer:
             return frames
         decoded, self._buffer = ScreenStreamer.extract_frames(self._buffer)
-        for frame_id, width, height, gray in decoded:
+        for frame_id, width, height, gray, is_bw in decoded:
+            if self.expect_bw and not is_bw:
+                gray = self._threshold_bw(gray)
             surface = ScreenStreamer.gray_to_surface(gray, width, height)
             frames.append((frame_id, width, height, surface))
         return frames
+
+    @staticmethod
+    def _threshold_bw(gray: bytes) -> bytes:
+        buf = bytearray(len(gray))
+        for i, g in enumerate(gray):
+            buf[i] = 255 if g >= 128 else 0
+        return bytes(buf)

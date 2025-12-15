@@ -19,6 +19,7 @@ class GameRun:
         stream_port=None,
         stream_serial=None,
         stream_serial_baud: int = 115200,
+        bw_mode: bool = False,
     ):
         logger.info("About to initialize pygame")
         pygame.init()
@@ -40,6 +41,7 @@ class GameRun:
                 tcp_port=stream_port,
                 serial_path=stream_serial,
                 serial_baud=stream_serial_baud,
+                bw_mode=bw_mode,
             )
             self.streamer.start()
             logger.info("Screen streamer started")
